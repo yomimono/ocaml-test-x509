@@ -84,11 +84,23 @@ module Crowbar_X509 = struct
     type t' = [%import: X509.Extension.t] [@@deriving crowbar]
     let to_crowbar = t'_to_crowbar
   end
+  module CA = struct
+    include X509.CA
+    type request_extensions' = [%import: X509.CA.request_extensions] [@@deriving crowbar]
+    let request_extensions_to_crowbar = request_extensions'_to_crowbar
+    type request_info' = [%import: X509.CA.request_info] [@@deriving crowbar]
+    let request_info_to_crowbar = request_info'_to_crowbar
+    let signing_request_to_crowbar = Crowbar.(map [distinguished_name_to_crowbar;
+                                                  list request_extensions_to_crowbar;
+                                                  private_key_to_crowbar] (fun dn extensions key ->
+        X509.CA.request dn ~extensions key))
+  end
 end
 
 let () =
-   Crowbar.(add_test ~name:"component is derivable" [Crowbar_X509.component_to_crowbar]
-              (fun t -> check true));
-   Crowbar.(add_test ~name:"extensions are derivable" [Crowbar_X509.Extension.to_crowbar]
+  (* we need to tell nocrypto to use a constant seed *)
+  let g = Nocrypto.Rng.generator in
+  g := Nocrypto.Rng.(create ~seed:(Cstruct.of_string "yolocrypto") (module Generators.Fortuna));
+   Crowbar.(add_test ~name:"csrs can be made" [Crowbar_X509.CA.signing_request_to_crowbar]
               (fun t -> check true));
   ()

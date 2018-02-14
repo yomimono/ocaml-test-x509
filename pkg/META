@@ -1,6 +1,6 @@
 version = "%{version}%"
 description = "test ocaml-x509"
-requires = "x509 crowbar ppx_import ppx_deriving_crowbar"
+requires = "x509 nocrypto crowbar ppx_import ppx_deriving_crowbar"
 archive(native) = "test_x509.cmxa"
 archive(native, plugin) = "test_x509.cmxs"
 exists-if = "test_x509.cma"
