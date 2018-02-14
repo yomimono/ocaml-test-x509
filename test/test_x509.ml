@@ -53,25 +53,36 @@ module Crowbar_X509 = struct
     Crowbar.const X509.(`RSA Keys.priv)
 
   module Extension = struct
-    type key_usage = [%import: X509.Extension.key_usage] [@@deriving crowbar]
-    type extended_key_usage = [%import: X509.Extension.extended_key_usage]
+    include X509.Extension
+    type key_usage' = [%import: X509.Extension.key_usage] [@@deriving crowbar]
+    let key_usage_to_crowbar = key_usage'_to_crowbar
+    type extended_key_usage' = [%import: X509.Extension.extended_key_usage]
     [@@deriving crowbar]
-    type general_name = [%import: X509.Extension.general_name] [@@deriving crowbar]
+    let extended_key_usage_to_crowbar = extended_key_usage'_to_crowbar
+    type general_name' = [%import: X509.Extension.general_name] [@@deriving crowbar]
+    let general_name_to_crowbar = general_name'_to_crowbar
     (* our authority_keys will always have None as their third element 
        to (cowardly) avoid Z.to_crowbar *)
-    type authority_key_id = X509.Extension.authority_key_id
-    let authority_key_id_to_crowbar : authority_key_id Crowbar.gen =
+    let authority_key_id_to_crowbar =
         Crowbar.(map [option Cstruct.to_crowbar; list general_name_to_crowbar]
 		    (fun a b -> a, b, None))
-    type priv_key_usage_period = [%import: X509.Extension.priv_key_usage_period]
+    type priv_key_usage_period' = [%import: X509.Extension.priv_key_usage_period]
        [@@deriving crowbar]
-    type name_constraint = [%import: X509.Extension.name_constraint] [@@deriving crowbar]
-    type policy = [%import: X509.Extension.policy] [@@deriving crowbar]
-    type reason = [%import: X509.Extension.reason] [@@deriving crowbar]
-    type reason_code = [%import: X509.Extension.reason_code] [@@deriving crowbar]
-    type distribution_point_name = [%import: X509.Extension.distribution_point_name] [@@deriving crowbar]
-    type distribution_point = [%import: X509.Extension.distribution_point] [@@deriving crowbar]
-    type t = [%import: X509.Extension.t] [@@deriving crowbar]
+    let priv_key_usage_period_to_crowbar = priv_key_usage_period'_to_crowbar
+    type name_constraint' = [%import: X509.Extension.name_constraint] [@@deriving crowbar]
+    let name_constraint_to_crowbar = name_constraint'_to_crowbar
+    type policy' = [%import: X509.Extension.policy] [@@deriving crowbar]
+    let policy_to_crowbar = policy'_to_crowbar
+    type reason' = [%import: X509.Extension.reason] [@@deriving crowbar]
+    let reason_to_crowbar = reason'_to_crowbar
+    type reason_code' = [%import: X509.Extension.reason_code] [@@deriving crowbar]
+    let reason_code_to_crowbar = reason_code'_to_crowbar
+    type distribution_point_name' = [%import: X509.Extension.distribution_point_name] [@@deriving crowbar]
+    let distribution_point_name_to_crowbar = distribution_point_name'_to_crowbar
+    type distribution_point' = [%import: X509.Extension.distribution_point] [@@deriving crowbar]
+    let distribution_point_to_crowbar = distribution_point'_to_crowbar
+    type t' = [%import: X509.Extension.t] [@@deriving crowbar]
+    let to_crowbar = t'_to_crowbar
   end
 end
 
