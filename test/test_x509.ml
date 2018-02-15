@@ -97,22 +97,20 @@ let () =
   (* we need to tell nocrypto to use a constant seed *)
   let g = Nocrypto.Rng.generator in
   g := Nocrypto.Rng.(create ~seed (module Generators.Fortuna));
-  (* something in our calls to signing_request lowers stability. *)
-  Crowbar.(add_test ~name:"same csr twice" [Crowbar_X509.distinguished_name_to_crowbar;
-                                              list Crowbar_X509.CA.request_extensions_to_crowbar;
-                                              hash_to_crowbar;
-                                              Crowbar_X509.private_key_to_crowbar] 
-	     (fun dn extensions digest key ->
-                 let csr1 = X509.CA.request dn ~extensions ~digest key in
-                 let csr2 = X509.CA.request dn ~extensions ~digest key in
-                 let pem1 = X509.Encoding.cs_of_signing_request csr1 in
-                 let pem2 = X509.Encoding.cs_of_signing_request csr2 in
-                 Crowbar.check_eq ~pp:Cstruct.hexdump_pp ~cmp:Cstruct.compare ~eq:Cstruct.equal pem1 pem2
-   (* this test has a stability that quickly recovers from 90sish, not clear to me why.*)
-
-  ));
-  Crowbar.(add_test ~name:"csr PEM roundtrip" [Crowbar_X509.CA.signing_request_to_crowbar] (fun csr -> let pem = X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 csr in
-Printf.printf "%s\n%!" (Cstruct.to_string pem);
-             let read_csr = X509.Encoding.Pem.Certificate_signing_request.of_pem_cstruct1 pem in
-             Crowbar.check_eq ~pp:Cstruct.hexdump_pp ~cmp:Cstruct.compare ~eq:Cstruct.equal pem @@ X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 read_csr
-))
+  Crowbar.(add_test ~name:"ASN1 roundtrip" [Crowbar_X509.CA.signing_request_to_crowbar]
+  (fun csr ->
+      let aux asn1 =
+	match X509.Encoding.parse_signing_request asn1 with
+        | None -> Format.asprintf "%a\n%!" Crowbar_X509.CA.pp_request_info @@
+                  X509.CA.info csr |> Crowbar.fail
+        | Some read_csr ->  read_csr
+      in
+      let read_csr = aux @@ X509.Encoding.cs_of_signing_request csr in
+      (* this test fails a LOT because the extensions get reordered in their roundtrip.
+         According to RFC3280 sec 4.1.2.9 "Extensions", "If present, this field
+         is a SEQUENCE of one or more certificate extensions." *)
+      (* RFC5280 agrees, tagging "Extensions ::= SEQUENCE SIZE (1..MAX OF Extension). *)
+      Crowbar.check_eq ~pp:Crowbar_X509.CA.pp_request_info
+	~eq:Crowbar_X509.CA.equal_request_info
+        (X509.CA.info csr) (X509.CA.info @@ aux @@ X509.Encoding.cs_of_signing_request read_csr)
+  ))
