@@ -109,7 +109,7 @@ let () =
       (* this test fails a LOT because the extensions get reordered in their roundtrip.
          According to RFC3280 sec 4.1.2.9 "Extensions", "If present, this field
          is a SEQUENCE of one or more certificate extensions." *)
-      (* RFC5280 agrees, tagging "Extensions ::= SEQUENCE SIZE (1..MAX OF Extension). *)
+      (* RFC5280 agrees, tagging "Extensions ::= SEQUENCE SIZE (1..MAX OF Extension)". *)
       Crowbar.check_eq ~pp:Crowbar_X509.CA.pp_request_info
 	~eq:Crowbar_X509.CA.equal_request_info
         (X509.CA.info csr) (X509.CA.info @@ aux @@ X509.Encoding.cs_of_signing_request read_csr)
