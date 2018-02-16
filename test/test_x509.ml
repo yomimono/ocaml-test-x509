@@ -128,7 +128,6 @@ let () =
   Crowbar.(add_test ~name:"no trust chain for cert signed by a rando, no matter \
 how ridiculous they were about signing it"
              [request_of_key Keys.ca_priv;
-              request_of_key Keys.rando_priv;
               request_of_key Keys.csr_priv;
               Ptime.to_crowbar;
               Ptime.to_crowbar;
@@ -136,23 +135,21 @@ how ridiculous they were about signing it"
               hash_to_crowbar;
               list extensions;
              ] @@
-           fun ca rando csr valid_from valid_until serial digest extensions ->
+           fun ca csr valid_from valid_until serial digest extensions ->
            (* let valid_from, valid_until =
              match Ptime.is_earlier ~than:valid_from valid_until with
              | true -> valid_from, valid_until
              | false -> valid_until, valid_from
            in *)
            let real_ca = ca_ify ~key:Keys.ca_priv ca in
-           let _bogus_ca = ca_ify ~key:Keys.rando_priv rando in
            let issuer = X509.CA.((info ca).subject) in (* no guys, it's totally me :) *)
            let signed_by_rando =
                X509.CA.sign csr ~valid_from ~valid_until ~digest ~extensions ~serial
                  (`RSA Keys.rando_priv) issuer in
-           let expected_failure : X509.Validation.result =
+           let _expected_failure : X509.Validation.result =
              `Fail (`InvalidChain)
            in
-           check_eq
-             ~eq:Crowbar_X509.Validation.equal_result
-             ~pp:Crowbar_X509.Validation.pp_result expected_failure @@
+           let is_failure = function | `Fail _ -> true | `Ok _ -> false in
+           check @@ is_failure @@
              X509.Validation.verify_chain_of_trust ~anchors:[real_ca] [signed_by_rando]
           )
