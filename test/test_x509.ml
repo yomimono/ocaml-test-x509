@@ -123,41 +123,29 @@ let () =
     let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
     X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA key) name
   in
-  Crowbar.(add_test ~name:"non-CA selfsigned certs aren't CAs"
-             [request_of_key Keys.csr_priv] @@ fun csr ->
-           let name = X509.CA.((info csr).subject) in
-           let valid_from = Ptime.min in
-           let valid_until = Ptime.max in 
-           let cert = X509.CA.sign ~valid_from ~valid_until csr (`RSA Keys.csr_priv) name in
-           (* since we didn't pass any extensions when self-signing, this should always fail with
-              CAInvalidExtensions *)
-           let expected_failure : X509.Validation.ca_error = (`CAInvalidExtensions cert) in
-           check_eq (`Error expected_failure) (X509.Validation.valid_ca cert)
-          );
-
-  Crowbar.(add_test ~name:"selfsigned certs with correct extensions are CAs"
-             [request_of_key Keys.ca_priv] @@ fun csr ->
-           let cert = ca_ify ~key:Keys.ca_priv csr in
-           check_eq `Ok @@ X509.Validation.valid_ca cert
-          );
-  Crowbar.(add_test ~name:"CAs can sign certs and be valid for them"
-             [request_of_key Keys.ca_priv; request_of_key Keys.csr_priv] @@
-           fun ca csr ->
+  let pair gen1 gen2 = Crowbar.(map [gen1; gen2] @@ fun a b -> a, b) in
+  let extensions = Crowbar.(pair bool Crowbar_X509.Extension.to_crowbar) in
+  Crowbar.(add_test ~name:"no trust chain for cert signed by a rando, no matter \
+how ridiculous they were about signing it"
+             [request_of_key Keys.ca_priv;
+              request_of_key Keys.rando_priv;
+              request_of_key Keys.csr_priv;
+              list extensions;
+             ] @@
+           fun ca rando csr extensions ->
            let valid_from = Ptime.min in
            let valid_until = Ptime.max in
-           let issuer = X509.CA.((info ca).subject) in
-           let ca_cert = ca_ify ~key:Keys.ca_priv ca in
-           let signed_cert = X509.CA.sign csr ~valid_from ~valid_until (`RSA Keys.ca_priv)
-               issuer in
-           (* the entire chain of trust is cert -> ca_cert *)
-           (* first element of verify_chain_of_trust is "the actual certificate chain",
-              so just the cert we generated and are checking;
-              second element of the tuple is the trust anchor (ca_cert) *)
-           let expected_success : X509.Validation.result =
-             `Ok (Some ([signed_cert], ca_cert))
+           let real_ca = ca_ify ~key:Keys.ca_priv ca in
+           let _bogus_ca = ca_ify ~key:Keys.rando_priv rando in
+           let issuer = X509.CA.((info ca).subject) in (* no guys, it's totally me :) *)
+           let signed_by_rando =
+               X509.CA.sign csr ~valid_from ~valid_until ~extensions
+                 (`RSA Keys.rando_priv) issuer in
+           let expected_failure : X509.Validation.result =
+             `Fail (`InvalidChain)
            in
            check_eq
              ~eq:Crowbar_X509.Validation.equal_result
-             ~pp:Crowbar_X509.Validation.pp_result expected_success @@
-             X509.Validation.verify_chain_of_trust ~anchors:[ca_cert] [signed_cert]
+             ~pp:Crowbar_X509.Validation.pp_result expected_failure @@
+             X509.Validation.verify_chain_of_trust ~anchors:[real_ca] [signed_by_rando]
           )
