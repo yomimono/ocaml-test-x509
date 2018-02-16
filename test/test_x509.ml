@@ -71,6 +71,12 @@ module Crowbar_X509 = struct
   (* this definition of equal_private_key is not correct, but it's probably sufficient
      to keep us from confusing two private keys *)
   let equal_private_key (`RSA a) (`RSA b) = Nocrypto.Rsa.(Z.equal a.e b.e && Z.equal a.n b.n)
+  
+  (* no printers nor equality tests exposed for `t`.  The best we
+     can get out of X509 is the associated S-expression :/ *)
+  type t = X509.t
+  let pp fmt t = Format.fprintf fmt "%s" (X509.sexp_of_t t |> Sexplib.Sexp.to_string_hum)
+  let equal a b = 0 = (Sexplib.Sexp.compare (X509.sexp_of_t a) (X509.sexp_of_t b))
 
   module Extension = struct
     type key_usage = [%import: X509.Extension.key_usage] [@@deriving crowbar, show, eq]
@@ -90,11 +96,14 @@ module Crowbar_X509 = struct
   module CA = struct
     type request_extensions = [%import: X509.CA.request_extensions] [@@deriving crowbar, show, eq]
     type request_info = [%import: X509.CA.request_info] [@@deriving crowbar, show, eq]
-    let signing_request_to_crowbar = Crowbar.(map [distinguished_name_to_crowbar;
-                                                  list request_extensions_to_crowbar;
-                                                  hash_to_crowbar;
-                                                  private_key_to_crowbar] (fun dn extensions digest key ->
-        X509.CA.request dn ~extensions ~digest key))
+  end
+  module Validation = struct
+    type fingerprint_validation_error = [%import: X509.Validation.fingerprint_validation_error] [@@deriving show, eq]
+    type leaf_validation_error = [%import: X509.Validation.leaf_validation_error] [@@deriving show, eq]
+    type chain_validation_error = [%import: X509.Validation.chain_validation_error] [@@deriving show, eq]
+    type chain_error = [%import: X509.Validation.chain_error] [@@deriving show, eq]
+    type validation_error = [%import: X509.Validation.validation_error] [@@deriving show, eq]
+    type result = [%import: X509.Validation.result] [@@deriving show, eq]
   end
 end
 
@@ -107,6 +116,13 @@ let () =
                                      list Crowbar_X509.CA.request_extensions_to_crowbar;
                                      hash_to_crowbar] (fun dn extensions digest ->
       X509.CA.request dn ~extensions ~digest (`RSA key))) in
+  let ca_ify ~key csr =
+    let name = X509.CA.((info csr).subject) in
+    let valid_from = Ptime.min in
+    let valid_until = Ptime.max in 
+    let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
+    X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA key) name
+  in
   Crowbar.(add_test ~name:"non-CA selfsigned certs aren't CAs"
              [request_of_key Keys.csr_priv] @@ fun csr ->
            let name = X509.CA.((info csr).subject) in
@@ -118,12 +134,30 @@ let () =
            let expected_failure : X509.Validation.ca_error = (`CAInvalidExtensions cert) in
            check_eq (`Error expected_failure) (X509.Validation.valid_ca cert)
           );
+
   Crowbar.(add_test ~name:"selfsigned certs with correct extensions are CAs"
              [request_of_key Keys.ca_priv] @@ fun csr ->
-           let name = X509.CA.((info csr).subject) in
-           let valid_from = Ptime.min in
-           let valid_until = Ptime.max in 
-           let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
-           let cert = X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA Keys.ca_priv) name in
+           let cert = ca_ify ~key:Keys.ca_priv csr in
            check_eq `Ok @@ X509.Validation.valid_ca cert
+          );
+  Crowbar.(add_test ~name:"CAs can sign certs and be valid for them"
+             [request_of_key Keys.ca_priv; request_of_key Keys.csr_priv] @@
+           fun ca csr ->
+           let valid_from = Ptime.min in
+           let valid_until = Ptime.max in
+           let issuer = X509.CA.((info ca).subject) in
+           let ca_cert = ca_ify ~key:Keys.ca_priv ca in
+           let signed_cert = X509.CA.sign csr ~valid_from ~valid_until (`RSA Keys.ca_priv)
+               issuer in
+           (* the entire chain of trust is cert -> ca_cert *)
+           (* first element of verify_chain_of_trust is "the actual certificate chain",
+              so just the cert we generated and are checking;
+              second element of the tuple is the trust anchor (ca_cert) *)
+           let expected_success : X509.Validation.result =
+             `Ok (Some ([signed_cert], ca_cert))
+           in
+           check_eq
+             ~eq:Crowbar_X509.Validation.equal_result
+             ~pp:Crowbar_X509.Validation.pp_result expected_success @@
+             X509.Validation.verify_chain_of_trust ~anchors:[ca_cert] [signed_cert]
           )
