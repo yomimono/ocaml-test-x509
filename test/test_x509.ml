@@ -61,10 +61,16 @@ module Crowbar_X509 = struct
     Crowbar.const X509.(`RSA (Nocrypto.Rsa.pub_of_priv Keys.csr_priv))
   let private_key_to_crowbar : X509.private_key Crowbar.gen =
     Crowbar.const X509.(`RSA Keys.csr_priv)
-  let pp_public_key fmt _ = Format.fprintf fmt "%s" "the public key"
-  let pp_private_key fmt _ = Format.fprintf fmt "%s" "the private key"
-  let equal_public_key _ _ = true
-  let equal_private_key _ _ = true
+  let pp_public_key fmt _ = Format.fprintf fmt "%s" "a public key"
+  let pp_private_key fmt _ = Format.fprintf fmt "%s" "a private key"
+  let equal_public_key (a : public_key) (b : public_key) : bool =
+    match a, b with
+    | `RSA a, `RSA b -> Nocrypto.Rsa.(Z.equal a.e b.e && Z.equal a.n b.n)
+    | `EC_pub _, `EC_pub _ -> Crowbar.fail "somehow got two EC_pub public keys?"
+    | `RSA _, `EC_pub _ | `EC_pub _, `RSA _ -> false
+  (* this definition of equal_private_key is not correct, but it's probably sufficient
+     to keep us from confusing two private keys *)
+  let equal_private_key (`RSA a) (`RSA b) = Nocrypto.Rsa.(Z.equal a.e b.e && Z.equal a.n b.n)
 
   module Extension = struct
     type key_usage = [%import: X509.Extension.key_usage] [@@deriving crowbar, show, eq]
@@ -97,20 +103,23 @@ let () =
   (* we need to tell nocrypto to use a constant seed *)
   let g = Nocrypto.Rng.generator in
   g := Nocrypto.Rng.(create ~seed (module Generators.Fortuna));
-  Crowbar.(add_test ~name:"ASN1 roundtrip" [Crowbar_X509.CA.signing_request_to_crowbar]
-  (fun csr ->
-      let aux asn1 =
-	match X509.Encoding.parse_signing_request asn1 with
-        | None -> Format.asprintf "%a\n%!" Crowbar_X509.CA.pp_request_info @@
-                  X509.CA.info csr |> Crowbar.fail
-        | Some read_csr ->  read_csr
-      in
-      let read_csr = aux @@ X509.Encoding.cs_of_signing_request csr in
-      (* this test fails a LOT because the extensions get reordered in their roundtrip.
-         According to RFC3280 sec 4.1.2.9 "Extensions", "If present, this field
-         is a SEQUENCE of one or more certificate extensions." *)
-      (* RFC5280 agrees, tagging "Extensions ::= SEQUENCE SIZE (1..MAX OF Extension)". *)
-      Crowbar.check_eq ~pp:Crowbar_X509.CA.pp_request_info
-	~eq:Crowbar_X509.CA.equal_request_info
-        (X509.CA.info csr) (X509.CA.info @@ aux @@ X509.Encoding.cs_of_signing_request read_csr)
-  ))
+  Crowbar.(add_test ~name:"non-CA selfsigned certs aren't CAs"
+             [Crowbar_X509.CA.signing_request_to_crowbar] @@ fun csr ->
+           let name = X509.CA.((info csr).subject) in
+           let valid_from = Ptime.min in
+           let valid_until = Ptime.max in 
+           let cert = X509.CA.sign ~valid_from ~valid_until csr (`RSA Keys.csr_priv) name in
+           (* since we didn't pass any extensions when self-signing, this should always fail with
+              CAInvalidExtensions *)
+           let expected_failure : X509.Validation.ca_error = (`CAInvalidExtensions cert) in
+           check_eq (`Error expected_failure) (X509.Validation.valid_ca cert)
+          );
+  Crowbar.(add_test ~name:"selfsigned certs with correct extensions are CAs"
+             [Crowbar_X509.CA.signing_request_to_crowbar] @@ fun csr ->
+           let name = X509.CA.((info csr).subject) in
+           let valid_from = Ptime.min in
+           let valid_until = Ptime.max in 
+           let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
+           let cert = X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA Keys.csr_priv) name in
+           check_eq `Ok @@ X509.Validation.valid_ca cert
+          )
