@@ -103,8 +103,12 @@ let () =
   (* we need to tell nocrypto to use a constant seed *)
   let g = Nocrypto.Rng.generator in
   g := Nocrypto.Rng.(create ~seed (module Generators.Fortuna));
+  let request_of_key key = Crowbar.(map [Crowbar_X509.distinguished_name_to_crowbar;
+                                     list Crowbar_X509.CA.request_extensions_to_crowbar;
+                                     hash_to_crowbar] (fun dn extensions digest ->
+      X509.CA.request dn ~extensions ~digest (`RSA key))) in
   Crowbar.(add_test ~name:"non-CA selfsigned certs aren't CAs"
-             [Crowbar_X509.CA.signing_request_to_crowbar] @@ fun csr ->
+             [request_of_key Keys.csr_priv] @@ fun csr ->
            let name = X509.CA.((info csr).subject) in
            let valid_from = Ptime.min in
            let valid_until = Ptime.max in 
@@ -115,11 +119,11 @@ let () =
            check_eq (`Error expected_failure) (X509.Validation.valid_ca cert)
           );
   Crowbar.(add_test ~name:"selfsigned certs with correct extensions are CAs"
-             [Crowbar_X509.CA.signing_request_to_crowbar] @@ fun csr ->
+             [request_of_key Keys.ca_priv] @@ fun csr ->
            let name = X509.CA.((info csr).subject) in
            let valid_from = Ptime.min in
            let valid_until = Ptime.max in 
            let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
-           let cert = X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA Keys.csr_priv) name in
+           let cert = X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA Keys.ca_priv) name in
            check_eq `Ok @@ X509.Validation.valid_ca cert
           )
