@@ -136,11 +136,6 @@ how ridiculous they were about signing it"
               list extensions;
              ] @@
            fun ca csr valid_from valid_until serial digest extensions ->
-           (* let valid_from, valid_until =
-             match Ptime.is_earlier ~than:valid_from valid_until with
-             | true -> valid_from, valid_until
-             | false -> valid_until, valid_from
-           in *)
            let real_ca = ca_ify ~key:Keys.ca_priv ca in
            let issuer = X509.CA.((info ca).subject) in (* no guys, it's totally me :) *)
            let signed_by_rando =
