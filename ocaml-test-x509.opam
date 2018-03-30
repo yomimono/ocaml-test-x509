@@ -1,0 +1,23 @@
+opam-version: "2.0"
+maintainer: "maintenance@identity-function.com"
+authors: ["Mindy Preston"]
+homepage: "https://github.com/yomimono/ocaml-test-x509"
+bug-reports: "https://github.com/yomimono/ocaml-test-x509/issues"
+dev-repo: "git+https://github.com/yomimono/ocaml-test-x509.git"
+license: "MIT"
+build:
+[[ "%{make}%" ]]
+build-test:
+[[ "%{make}%" "fuzz" ]]
+depends: [
+  "ocamlfind" {build}
+  "ocamlbuild" {build}
+  "bun"
+  "crowbar"
+  "ppx_deriving"
+  "ppx_deriving_crowbar"
+  "ppx_import"
+  "nocrypto"
+  "x509"
+  "zarith"
+]
