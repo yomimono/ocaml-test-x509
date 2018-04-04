@@ -8,7 +8,7 @@ license: "MIT"
 build:
 [[ "%{make}%" ]]
 build-test:
-[[ "timeout" "30m" "%{make}%" "fuzz" ]]
+[[ "timeout" "--preserve-status" "30m" "%{make}%" "fuzz" ]]
 depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
