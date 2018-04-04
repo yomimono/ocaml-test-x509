@@ -109,13 +109,12 @@ end
 
 let () =
   let seed = Cstruct.of_string "yolocryptolol" in
+  let serial = Z.of_int 1234567890 in
   (* we need to tell nocrypto to use a constant seed *)
   let g = Nocrypto.Rng.generator in
   g := Nocrypto.Rng.(create ~seed (module Generators.Fortuna));
-  let request_of_key key = Crowbar.(map [Crowbar_X509.distinguished_name_to_crowbar;
-                                     list Crowbar_X509.CA.request_extensions_to_crowbar;
-                                     hash_to_crowbar] (fun dn extensions digest ->
-      X509.CA.request dn ~extensions ~digest (`RSA key))) in
+  let pinata_ca_dn = [`CN "BTC Pinata CA"] in
+  let pinata_client_dn = [`CN "Pinata client"] in
   let ca_ify ~key csr =
     let name = X509.CA.((info csr).subject) in
     let valid_from = Ptime.min in
@@ -123,24 +122,17 @@ let () =
     let extensions = [(true, `Basic_constraints (true, None)); (true, `Key_usage [`Key_cert_sign])] in
     X509.CA.sign ~extensions ~valid_from ~valid_until csr (`RSA key) name
   in
+  let csr = X509.CA.request pinata_client_dn (`RSA Keys.csr_priv) in
+  let real_ca = ca_ify ~key:Keys.ca_priv @@ X509.(CA.request pinata_ca_dn (`RSA Keys.ca_priv)) in
+  let valid_from, valid_until = Ptime.(min, max) in
   let pair gen1 gen2 = Crowbar.(map [gen1; gen2] @@ fun a b -> a, b) in
   let extensions = Crowbar.(pair bool Crowbar_X509.Extension.to_crowbar) in
   Crowbar.(add_test ~name:"no trust chain for cert signed by a rando, no matter \
 how ridiculous they were about signing it"
-             [request_of_key Keys.ca_priv;
-              request_of_key Keys.csr_priv;
-              Ptime.to_crowbar;
-              Ptime.to_crowbar;
-              Z.to_crowbar;
-              hash_to_crowbar;
-              list extensions;
-             ] @@
-           fun ca csr valid_from valid_until serial digest extensions ->
-           let real_ca = ca_ify ~key:Keys.ca_priv ca in
-           let issuer = X509.CA.((info ca).subject) in (* no guys, it's totally me :) *)
+             [list extensions] @@ fun extensions ->
            let signed_by_rando =
-               X509.CA.sign csr ~valid_from ~valid_until ~digest ~extensions ~serial
-                 (`RSA Keys.rando_priv) issuer in
+               X509.CA.sign csr ~valid_from ~valid_until ~digest:X509.(`SHA1) ~extensions ~serial
+                 (`RSA Keys.rando_priv) pinata_ca_dn in
            let _expected_failure : X509.Validation.result =
              `Fail (`InvalidChain)
            in
