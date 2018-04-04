@@ -45,38 +45,11 @@ module Z = struct
   let pp fmt z = Format.fprintf fmt "%s" @@ Z.to_string z
 end
 
-type hash = [%import: Nocrypto.Hash.hash] [@@deriving crowbar, show, eq]
-
 module Crowbar_X509 = struct
   type key_type = [%import: X509.key_type ] [@@deriving crowbar, show, eq]
   type host = [%import: X509.host ] [@@deriving crowbar, show, eq]
   type component = [%import: X509.component] [@@deriving crowbar, show, eq]
   type distinguished_name = [%import: X509.distinguished_name ] [@@deriving crowbar, show, eq]
-
-  type public_key = X509.public_key
-  type private_key = X509.private_key
-
-  (* keypairs are special -- always use the precomputed ones *)
-  let public_key_to_crowbar : X509.public_key Crowbar.gen =
-    Crowbar.const X509.(`RSA (Nocrypto.Rsa.pub_of_priv Keys.csr_priv))
-  let private_key_to_crowbar : X509.private_key Crowbar.gen =
-    Crowbar.const X509.(`RSA Keys.csr_priv)
-  let pp_public_key fmt _ = Format.fprintf fmt "%s" "a public key"
-  let pp_private_key fmt _ = Format.fprintf fmt "%s" "a private key"
-  let equal_public_key (a : public_key) (b : public_key) : bool =
-    match a, b with
-    | `RSA a, `RSA b -> Nocrypto.Rsa.(Z.equal a.e b.e && Z.equal a.n b.n)
-    | `EC_pub _, `EC_pub _ -> Crowbar.fail "somehow got two EC_pub public keys?"
-    | `RSA _, `EC_pub _ | `EC_pub _, `RSA _ -> false
-  (* this definition of equal_private_key is not correct, but it's probably sufficient
-     to keep us from confusing two private keys *)
-  let equal_private_key (`RSA a) (`RSA b) = Nocrypto.Rsa.(Z.equal a.e b.e && Z.equal a.n b.n)
-  
-  (* no printers nor equality tests exposed for `t`.  The best we
-     can get out of X509 is the associated S-expression :/ *)
-  type t = X509.t
-  let pp fmt t = Format.fprintf fmt "%s" (X509.sexp_of_t t |> Sexplib.Sexp.to_string_hum)
-  let equal a b = 0 = (Sexplib.Sexp.compare (X509.sexp_of_t a) (X509.sexp_of_t b))
 
   module Extension = struct
     type key_usage = [%import: X509.Extension.key_usage] [@@deriving crowbar, show, eq]
@@ -92,18 +65,6 @@ module Crowbar_X509 = struct
     type distribution_point_name = [%import: X509.Extension.distribution_point_name] [@@deriving crowbar, show, eq]
     type distribution_point = [%import: X509.Extension.distribution_point] [@@deriving crowbar, show, eq]
     type t = [%import: X509.Extension.t] [@@deriving crowbar, show, eq]
-  end
-  module CA = struct
-    type request_extensions = [%import: X509.CA.request_extensions] [@@deriving crowbar, show, eq]
-    type request_info = [%import: X509.CA.request_info] [@@deriving crowbar, show, eq]
-  end
-  module Validation = struct
-    type fingerprint_validation_error = [%import: X509.Validation.fingerprint_validation_error] [@@deriving show, eq]
-    type leaf_validation_error = [%import: X509.Validation.leaf_validation_error] [@@deriving show, eq]
-    type chain_validation_error = [%import: X509.Validation.chain_validation_error] [@@deriving show, eq]
-    type chain_error = [%import: X509.Validation.chain_error] [@@deriving show, eq]
-    type validation_error = [%import: X509.Validation.validation_error] [@@deriving show, eq]
-    type result = [%import: X509.Validation.result] [@@deriving show, eq]
   end
 end
 
