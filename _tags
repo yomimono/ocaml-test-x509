@@ -1,6 +1,6 @@
 true: warn(@5@8@10@11@12@14@23@24@26@29@40), bin_annot, safe_string
 
 "test": include
-<test/*>: debug, package(x509), package(nocrypto), package(zarith), package(crowbar), \
+<test/*>: debug, package(fmt), package(x509), package(nocrypto), package(zarith), package(crowbar), \
           package(ppx_import), package(ppx_deriving.eq), package(ppx_deriving.show), \
           package(ppx_deriving_crowbar)

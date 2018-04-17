@@ -98,7 +98,8 @@ how ridiculous they were about signing it"
              `Fail (`InvalidChain)
            in
            let is_failure = function | `Fail _ -> true | `Ok _ -> false in
-           Format.printf "%s\n" (X509.sexp_of_t signed_by_rando |> Sexplib.Sexp.to_string_hum);
+           let actual_extensions : Crowbar_X509.Extension.t list = List.map snd extensions in
+           Format.printf "%a\n" (Fmt.list Crowbar_X509.Extension.pp) actual_extensions;
            check @@ is_failure @@
              X509.Validation.verify_chain_of_trust ~anchors:[real_ca] [signed_by_rando]
           )
